@@ -34,7 +34,7 @@ EOF
   exit 0
 fi
 
-if ! codex login status 2>/dev/null | grep -qi "logged in"; then
+if ! codex login status 2>&1 | grep -qi "logged in"; then
   echo ""
   echo "⚠  codex is installed but not logged in. Run: codex login" >&2
   exit 0
