@@ -2,7 +2,7 @@
 # Generate an image via OpenAI's gpt-image-2 through the codex CLI.
 # Uses the logged-in ChatGPT subscription — no API key required.
 #
-# Usage: gpt-image-2 "<prompt>" <output.png> [--size WxH]
+# Usage: gpt-image-2 "<prompt>" <output.png> [--size WxH] [--provider codex|muapi] [--model MODEL]
 #
 # If --size is omitted, the model picks its own dimensions.
 # Works on macOS, Linux, and Windows (Git Bash or WSL).
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
-  echo "usage: gpt-image-2 \"<prompt>\" <output.png> [--size WxH]" >&2
+  echo "usage: gpt-image-2 \"<prompt>\" <output.png> [--size WxH] [--provider codex|muapi] [--model MODEL]" >&2
   exit 2
 fi
 
@@ -19,23 +19,57 @@ out="$2"
 shift 2
 
 size=""
+provider="${GPT_IMAGE_PROVIDER:-codex}"
+model="${GPT_IMAGE_MODEL:-flux-dev-image}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --size) size="$2"; shift 2 ;;
+    --size)
+      [[ $# -ge 2 ]] || { echo "gpt-image-2: --size requires a value" >&2; exit 2; }
+      size="$2"
+      shift 2
+      ;;
+    --provider)
+      [[ $# -ge 2 ]] || { echo "gpt-image-2: --provider requires a value" >&2; exit 2; }
+      provider="$2"
+      shift 2
+      ;;
+    --model)
+      [[ $# -ge 2 ]] || { echo "gpt-image-2: --model requires a value" >&2; exit 2; }
+      model="$2"
+      shift 2
+      ;;
     *) echo "gpt-image-2: unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-
-if ! command -v codex >/dev/null 2>&1; then
-  echo "gpt-image-2: codex CLI not found on PATH. Install it ('brew install codex' or 'npm install -g @openai/codex') and run 'codex login'." >&2
-  exit 127
-fi
 
 out_dir="$(cd "$(dirname "$out")" 2>/dev/null && pwd)" || {
   echo "gpt-image-2: output dir does not exist: $(dirname "$out")" >&2
   exit 2
 }
 out="$out_dir/$(basename "$out")"
+
+case "$provider" in
+  muapi)
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo "gpt-image-2: python3 is required for the MuAPI provider" >&2
+      exit 127
+    fi
+
+    helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/muapi_image.py"
+    args=("$helper" "$prompt" "$out" --model "$model")
+    if [[ -n "$size" ]]; then
+      args+=(--size "$size")
+    fi
+    exec python3 "${args[@]}"
+    ;;
+  codex) ;;
+  *) echo "gpt-image-2: provider must be codex or muapi" >&2; exit 2 ;;
+esac
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "gpt-image-2: codex CLI not found on PATH. Install it ('brew install codex' or 'npm install -g @openai/codex') and run 'codex login'." >&2
+  exit 127
+fi
 
 size_line=""
 if [[ -n "$size" ]]; then

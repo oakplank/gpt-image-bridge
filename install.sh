@@ -25,11 +25,14 @@ echo "✓ Installed gpt-image-bridge skill → $dst"
 if ! command -v codex >/dev/null 2>&1; then
   cat >&2 <<'EOF'
 
-⚠  codex CLI is not on your PATH. The skill will not work until you install it.
+⚠  codex CLI is not on your PATH, so the default provider is unavailable.
 
     macOS:     brew install codex
     any OS:    npm install -g @openai/codex
     Then:      codex login        # log in with your ChatGPT subscription
+
+    Alternative: install Python 3, set MUAPI_API_KEY, and call the
+    wrapper with --provider muapi.
 
 EOF
   exit 0
