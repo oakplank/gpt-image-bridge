@@ -22,11 +22,12 @@ Codex runs sandboxed and can only write inside its own working directory, so the
 ## Prerequisites
 
 - Any coding agent that can run shell commands — [Claude Code](https://docs.claude.com/en/docs/claude-code), Cursor, Gemini CLI, aider, or your own script
-- [`codex` CLI](https://github.com/openai/codex) installed (`brew install codex` on macOS, `npm install -g @openai/codex` anywhere)
-- A ChatGPT subscription (Plus / Pro / Team) logged in via `codex login`
 - macOS, Linux, or Windows — the wrapper is bash, which on Windows runs under Git Bash (the shell Claude Code already uses there) or WSL
+- One generation backend:
+  - Default Codex route: [`codex` CLI](https://github.com/openai/codex), a ChatGPT subscription, and `codex login`
+  - Optional Atlas Cloud route: Python 3 and `ATLASCLOUD_API_KEY`
 
-Verify:
+Verify the default Codex route:
 
 ```bash
 codex login status   # should say: Logged in using ChatGPT
@@ -104,17 +105,36 @@ If you installed via `install.sh` and didn't symlink it onto your `PATH`, the wr
 Optional flags:
 
 - `--size WxH` — request a specific aspect ratio (e.g. `--size 1792x1024`). If omitted, the model picks its own dimensions.
+- `--provider codex|atlas` — keep the subscription-backed Codex route (default), or call GPT Image 2 through Atlas Cloud.
+- `--quality low|medium|high` — set Atlas Cloud output quality (default: `medium`).
 
-On success the wrapper prints the absolute output path. On failure it prints the tail of the codex log to stderr.
+### Optional Atlas Cloud backend
+
+Use Atlas Cloud when you prefer a direct API request over the slower Codex reasoning loop. The default remains `codex`, so existing installs and commands do not change.
+
+```bash
+export ATLASCLOUD_API_KEY="your-api-key"
+
+gpt-image-2 \
+  "a photorealistic hummingbird hovering in front of a red desert canyon at golden hour" \
+  /tmp/hummingbird.png \
+  --provider atlas \
+  --size 1536x1024 \
+  --quality high
+```
+
+The Atlas route uses `openai/gpt-image-2/text-to-image`. It submits the generation request once, polls the prediction with bounded retries, and downloads the resulting PNG atomically. It requires Python 3 and incurs Atlas Cloud API usage charges.
+
+On success the wrapper prints the absolute output path. Codex failures print the tail of the Codex log; Atlas failures print the API or polling error to stderr.
 
 ## Why go through codex instead of calling the API directly?
 
-| | Through codex | Direct OpenAI API |
-| --- | --- | --- |
-| Auth | Your ChatGPT subscription | Requires API key |
-| Cost | Uses ChatGPT message quota | Per-image billing |
-| Speed | Slower (codex reasons before calling the image tool) | Faster |
-| Prompt quality | codex refines your prompt with gpt-5.4 before generating | Passed verbatim |
+| | Through codex | Atlas Cloud backend | Direct OpenAI API |
+| --- | --- | --- | --- |
+| Auth | Your ChatGPT subscription | `ATLASCLOUD_API_KEY` | Requires OpenAI API key |
+| Cost | Uses ChatGPT message quota | Per-image Atlas billing | Per-image OpenAI billing |
+| Speed | Slower (codex reasons before calling the image tool) | Direct API request | Direct API request |
+| Prompt quality | codex refines your prompt before generating | Passed verbatim | Passed verbatim |
 
 If you already pay for ChatGPT, the codex route is free at the margin. If you'd rather pay per image for speed, call the [Images API](https://platform.openai.com/docs/api-reference/images) directly — this bridge is for the subscription route.
 
@@ -133,7 +153,7 @@ npx skills add https://github.com/Leonxlnx/taste-skill --skill image-taste-front
 
 ## Caveats
 
-- **Latency**: calls go through codex's reasoning loop before the image tool fires — expect 4–6 minutes per image. Latency depends on your codex `reasoning_effort` config.
+- **Latency**: the default Codex route goes through a reasoning loop before the image tool fires — expect 4–6 minutes per image. Latency depends on your codex `reasoning_effort` config.
 - **Quota**: ChatGPT subscriptions have message limits. Heavy automated use can hit rate caps.
 - **Terms of service**: using `codex` programmatically to drive image generation is within the spirit of the tool (codex is an official OpenAI product), but consumer-subscription automation is ultimately gated by OpenAI's terms. Use at your own risk.
 - **Bash required** — native on macOS/Linux; on Windows use Git Bash (bundled with Git for Windows, and what Claude Code uses there) or WSL.
