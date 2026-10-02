@@ -4,15 +4,16 @@
 # The gpt-image-2 executable name is retained for existing callers.
 # Uses the logged-in ChatGPT subscription — no API key required.
 #
-# Usage: gpt-image-2 "<prompt>" <output.png> [--size WxH]
+# Usage: gpt-image-2 "<prompt>" <output.png> [--size WxH] [--ref <image>]...
 #
 # If --size is omitted, the model picks its own dimensions.
+# --ref attaches a reference image (repeatable), like uploading one in ChatGPT.
 # Works on macOS, Linux, and Windows (Git Bash or WSL).
 
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
-  echo "usage: gpt-image-2 \"<prompt>\" <output.png> [--size WxH]" >&2
+  echo "usage: gpt-image-2 \"<prompt>\" <output.png> [--size WxH] [--ref <image>]..." >&2
   exit 2
 fi
 
@@ -21,9 +22,11 @@ out="$2"
 shift 2
 
 size=""
+refs=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --size) size="$2"; shift 2 ;;
+    --ref) refs+=("$2"); shift 2 ;;
     *) echo "gpt-image-2: unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -45,6 +48,29 @@ if [[ -n "$size" ]]; then
 SIZE: ${size}"
 fi
 
+# Reference images are attached to the prompt with --image. Resolve them to
+# absolute paths first: codex runs with -C <workdir>, so a relative path from
+# the caller's cwd would no longer resolve. Use the --image=<path> form, since
+# a bare --image takes several values and would swallow the prompt.
+image_args=()
+for ref in ${refs[@]+"${refs[@]}"}; do
+  if [[ ! -f "$ref" ]]; then
+    echo "gpt-image-2: reference image not found: $ref" >&2
+    exit 2
+  fi
+  ref="$(cd "$(dirname "$ref")" && pwd)/$(basename "$ref")"
+  if command -v cygpath >/dev/null 2>&1; then
+    ref="$(cygpath -m "$ref")"
+  fi
+  image_args+=("--image=$ref")
+done
+
+ref_line=""
+if [[ ${#image_args[@]} -gt 0 ]]; then
+  ref_line="
+REFERENCE IMAGES: ${#image_args[@]} attached to this message. Use them as the visual reference for the image_generation tool, the way a user uploads a reference image in ChatGPT: keep the subject's appearance, identity, and style unless the prompt says to change them. Do not just describe them in words."
+fi
+
 # Codex runs under a workspace-write sandbox: it can only write inside its own
 # working directory, so it must not be handed the final output path (which may
 # be outside the workspace, or in a path format its shell doesn't parse).
@@ -64,7 +90,7 @@ fi
 
 full_prompt="Use your image_generation tool to create an image.
 
-PROMPT: ${prompt}${size_line}
+PROMPT: ${prompt}${size_line}${ref_line}
 
 Requirements:
 - You MUST call the image_generation tool.
@@ -72,7 +98,7 @@ Requirements:
 - After the tool produces the image, save the PNG as out.png in your current working directory. Use the relative path out.png, not an absolute path.
 - Reply with only the file name of the saved PNG, nothing else."
 
-if ! codex exec --skip-git-repo-check -s workspace-write -C "$codex_workdir" "$full_prompt" </dev/null >"$log" 2>&1; then
+if ! codex exec --skip-git-repo-check -s workspace-write -C "$codex_workdir" ${image_args[@]+"${image_args[@]}"} "$full_prompt" </dev/null >"$log" 2>&1; then
   echo "gpt-image-2: codex exec failed. Last 30 lines of log:" >&2
   tail -n 30 "$log" >&2
   echo "(full log: $log)" >&2
